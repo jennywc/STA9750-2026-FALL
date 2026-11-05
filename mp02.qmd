@@ -1,8 +1,18 @@
 ---
-title: "Mini-Project 02: GTA"
-format: html
+title: "Mini-Project 02: Green Transit Awards"
+format:
+  html:
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    number-sections: false
 author: Jenny Wang
 ---
+## Introduction ##
+The objective of this project is to evaluate the environmental impact of public transit agencies across the United States and identify which agencies are most effective at reducing emissions. Using data from the National Transit Database and the Energy Information Administration, this analysis examines fuel and electricity consumption, passenger ridership, and CO2 emissions.
+
+## Data Acquisition ##
+The Energy Information Administration provides state electricity information, including CO2 emissions and electricity prices. The National Transit Database provides information about transit agencies, including their energy consumption, fuel usage, and passenger ridership. These datasets will be used together to compare the environmental impact of public transit agencies.
 
 ```{r}
 #| code-fold: true
@@ -89,7 +99,7 @@ get_eia_sep <- function(state, abbr){
 EIA_SEP_REPORT <- map2(state.name, state.abb, get_eia_sep) |> list_rbind()
 ```
 
-```{R}
+```{r}
 #| code-fold: true
 #| code-summary: "Data Acquisition - 2025 Annual Database Energy Consumption"
 #| message: false
@@ -209,23 +219,26 @@ load_ntd_service <- function(){
 NTD_SERVICE <- load_ntd_service()
 ```
 
+Before combining the datasets, I first reviewed the information available in each table. This helped me understand the differences in electricity use, fuel consumption, and public transit activity across agencies and states.
+
 ::: {.panel-tabset}
 
 ## State Electricity Profiles
-
+This table shows electricity prices, primary energy sources, and CO2 emissions for each state.
 ```{r}
-#| echo: false
+
 EIA_SEP_REPORT |>
+  slice_head(n = 10) |>
   mutate(electricity_price_MWh = sprintf("$%.2f", electricity_price_MWh)) |>
   knitr::kable(
-    caption = "State Electricity Profiles"
+    caption = "State Electricity Profiles (First 10 Rows"
   )
 ```
 
 ## NTD Energy Consumption
-
+This table provides a closer look at the different fuel types used by public transit agencies.
 ```{r}
-#| echo: false
+
 NTD_ENERGY |>
   head(10) |>
   knitr::kable(
@@ -234,9 +247,9 @@ NTD_ENERGY |>
 ```
 
 ## Top 10 Transit Agencies by Energy Consumption
-
+This graph compares the agencies with the highest overall energy consumption.
 ```{r}
-#| echo: false
+
 NTD_ENERGY |>
   group_by(`Agency Name`) |>
   summarize(Total_Energy = sum(c_across(where(is.numeric)))) |>
@@ -253,12 +266,11 @@ NTD_ENERGY |>
   ) +
   theme_minimal()
 ```
-
 :::
+Some transit modes were originally listed using abbreviations. I changed these abbreviations into their full names to make the tables and graphs easier to understand.
 ```{r}
 #| code-fold: true
-#| code-summary: "Data Cleaning - Mode"
-# Recoding the :mode: column, recode_value did not work for me
+#| code-summary: "Recoding Abbreviations"
 NTD_SERVICE$mode <- dplyr::recode(
   NTD_SERVICE$mode,
   "AR" = "Alaska Railroad",
@@ -281,3 +293,967 @@ NTD_SERVICE$mode <- dplyr::recode(
 )
 ```
 
+
+## Data Integration and Initial Exploration ##
+This section explores the three datasets to identify differences in electricity prices, CO2 emissions, fuel consumption, and passenger ridership. The results provide an initial understanding of how energy use and public transportation vary across states and transit agencies.
+
+### EIA Questions
+The following questions examine electricity prices and CO2 emissions across the United States. This helps identify which states have more expensive electricity and which have cleaner or dirtier electricity sources.
+
+::: {.panel-tabset}
+
+## Question 1: Most Expensive Electricity
+
+```{r}
+#| code-fold: true
+#| code-summary: "Which 5 states have the most expensive retail electricity?"
+#| message: false
+#| warning: false
+
+# Finds the five states with the highest electricity prices
+most_expensive <- EIA_SEP_REPORT |>
+  arrange(desc(electricity_price_MWh)) |>
+  slice_head(n = 5)
+
+most_expensive
+
+# Creates a bar graph 
+ggplot(most_expensive,
+       aes(x = reorder(state, electricity_price_MWh),
+           y = electricity_price_MWh,
+           fill = state)) +
+  geom_col() +
+  geom_text(aes(label = sprintf("$%.2f", electricity_price_MWh)),
+            hjust = -0.2) +
+  coord_flip() +
+  labs(
+    title = "Five States with the Most Expensive Electricity",
+    x = "State",
+    y = "Electricity Price per MWh"
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+*Source: U.S. Energy Information Administration (EIA), State Electricity Profiles.*
+
+**Answer**: Hawaii had the highest electricity price at $380.00 per MWh, followed by California at $270.40 per MWh. Connecticut, Rhode Island, and Massachusetts also had some of the highest electricity prices. This shows that electricity costs vary significantly across states, which may affect the operating costs of public transit agencies that rely on electricity.
+
+## Question 2: Dirtiest Electricity Mix
+
+```{r}
+#| code-fold: true
+#| code-summary: "Which 5 states have the ‘dirtiest’ electricity mix? "
+#| message: false
+#| warning: false
+
+# Finds the five states with the highest CO2 emissions per MWh 
+dirtiest_states <- EIA_SEP_REPORT |>
+  arrange(desc(CO2_MWh)) |>
+  slice_head(n = 5) |>
+  select(state, CO2_MWh)
+
+dirtiest_states
+
+# Creates a table.
+dirtiest_states |>
+  knitr::kable(
+    col.names = c("State", "CO2 Emissions (lbs/MWh)"),
+    caption = "Five States with the Dirtiest Electricity Mix"
+  )
+    
+```
+**Answer**: West Virginia had the highest CO2 emissions at 1,912 pounds per MWh, followed by Kentucky and Wyoming. Missouri and Hawaii also had some of the highest emissions. This suggests that these states rely more heavily on carbon-intensive sources of electricity, which can result in higher emissions for transit agencies that depend on electricity.
+
+## Question 3: Average CO2 Emissions
+```{r}
+#| code-fold: true
+#| code-summary: "EIA Question 3 - On average, how many pounds of CO2 are emitted per MWh of electricity produced in the US?"
+#| message: false
+#| warning: false
+
+# # Calculates the weighted average of CO2 emissions across all 50 states.
+weighted_average <- EIA_SEP_REPORT |>
+  summarize(
+    average_CO2 = weighted.mean(
+      CO2_MWh,
+      generation_MWh,
+      na.rm = TRUE
+    )
+  )
+
+weighted_average
+```
+**Answer**: The weighted average of CO2 emissions across the United States was approximately 784.86 pounds per MWh of electricity generated. This calculation accounts for differences in electricity generation between states, rather than treating every state equally. This provides a national benchmark that can be used later to estimate emissions from transit agencies' electricity consumption.
+
+## Question 5: New York vs. Texas
+```{r}
+#| code-fold: true
+#| code-summary: "New York vs Texas Code"
+#| message: false
+#| warning: false
+# Compares CO2 emissions in New York and Texas to determine how much cleaner New York's electricity mix is.
+EIA_SEP_REPORT |>
+  filter(state %in% c("New York", "Texas")) |>
+  select(state, CO2_MWh)
+
+823 / 537
+```
+**Answer**: New York's electricity mix produces approximately 537 pounds of CO2 per MWh, compared to Texas at 823 pounds per MWh. This means Texas produces about 1.53 times more CO2 per MWh than New York. This shows that electricity sources can have a significant impact on transit emissions, depending on the state where an agency operates.
+:::
+
+### NTD Energy Question
+This section examines how much fuel public transit agencies consume and which fuel sources are most commonly used. Comparing fuel consumption helps identify agencies that rely more heavily on different energy sources.
+
+::: {.panel-tabset}
+
+## Question 1: Five Transit Agencies Fuel Usage and Breakdown
+
+```{r}
+#| code-fold: true
+#| code-summary: "Five Transit Agencies Fuel Usage and Breakdown Code"
+#| message: false
+#| warning: false
+
+
+# Calculates total fuel consumption for each agency and identifies the five agencies with the highest usage.
+agency_fuel <- NTD_ENERGY |>
+  mutate(
+    total_gallons = rowSums(
+      across(starts_with("Gallons of")),
+      na.rm = TRUE
+    )
+  ) |>
+  group_by(`Agency Name`) |>
+  summarize(
+    total_gallons = sum(total_gallons),
+    .groups = "drop"
+  ) |>
+  arrange(desc(total_gallons)) |>
+  slice_head(n = 5)
+
+agency_fuel
+
+# Breaks down the fuel consumption by type for the five agencies with the highest total fuel usage.
+fuel_breakdown <- NTD_ENERGY |>
+  mutate(
+    total_gallons = rowSums(
+      across(starts_with("Gallons of")),
+      na.rm = TRUE
+    )
+  ) |>
+  group_by(`Agency Name`) |>
+  summarize(
+    across(starts_with("Gallons of"), sum, na.rm = TRUE),
+    total_gallons = sum(total_gallons),
+    .groups = "drop"
+  ) |>
+  arrange(desc(total_gallons)) |>
+  slice_head(n = 5)
+
+
+fuel_breakdown_clean <- fuel_breakdown |>
+  select(where(~ any(. != 0)))
+
+# Removes unused fuel types and creates a formatted table showing each agency's fuel consumption.
+fuel_breakdown_clean |>
+  mutate(across(where(is.numeric), round, 0)) |>
+  knitr::kable(
+    col.names = c(
+      "Agency",
+      "Compressed Natural Gas (Gallons)",
+      "Diesel Fuel (Gallons)",
+      "Gasoline (Gallons)",
+      "Total Gallons"
+    ),
+    caption = "Five Transit Agencies with the Highest Fuel Consumption"
+  ) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center"
+  ) |>
+  kableExtra::row_spec(
+    0,
+    bold = TRUE,
+    color = "white",
+    background = "#1D3557"
+  )
+```
+**Answer**: New Jersey Transit had the highest fuel consumption, with approximately 41.7 million gallons, followed closely by MTA New York City Transit with 40.8 million gallons. Los Angeles County, Northeast Illinois, and Massachusetts Bay also ranked among the top five. The table shows that diesel fuel and compressed natural gas make up much of these agencies' fuel consumption, which will help compare their emissions in the later analysis.
+
+## Question 3: Least Common Fuel Source used by public Transit
+
+```{r}
+#| code-fold: true
+#| code-summary: "NTD Energy Question 3: Which fuel source is the least commonly used by public transit agencies?"
+#| message: false
+#| warning: false
+
+# Counts how many transit agencies use each fuel type and sorts them from least commonly used to most commonly used.
+fuel_usage <- NTD_ENERGY |>
+  summarize(
+    across(
+      starts_with("Gallons of"),
+      ~ sum(. > 0, na.rm = TRUE)
+    )
+  ) |>
+  pivot_longer(
+    everything(),
+    names_to = "fuel_type",
+    values_to = "agency_count"
+  ) |>
+  arrange(agency_count)
+
+fuel_usage
+```
+**Answer**: Liquefied natural gas is the least commonly used fuel source, with only `r fuel_usage$agency_count[fuel_usage$fuel_type == "Gallons of Liquified Nat Gas"]` agency reporting its use. Bunker fuel and kerosene were not reported as being used by any transit agencies. Among the fuels that were used. Gasoline and diesel fuel were the most widely used sources. This shows that transit agencies rely on a variety of fuel sources, but some alternatives are much less commonly used than traditional fuels.
+
+:::
+
+### NTD Service Question
+This section focuses on public transit ridership and passenger activity. By examining unlinked passenger trips and passenger miles, I can compare the amount of service provided by different transit agencies.
+
+::: {.panel-tabset}
+
+## Question 1: Highest Annual Unlinked Passenger Trips
+
+```{r}
+#| code-fold: true
+#| code-summary: "NTD Serive Question 1: Which five transit services have the highest annual unlinked passenger trips (UPT)?"
+#| message: false
+#| warning: false
+
+# Finds the five transit agency and mode combinations with the highest annual passenger trips.
+top_upt <- NTD_SERVICE |>
+  group_by(AGENCY, mode) |>
+  summarize(
+    total_upt = sum(total_upt, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(desc(total_upt)) |>
+  slice_head(n = 5)
+
+top_upt
+
+# Creates a bar graph comparing the five transit services with the highest passenger trips.
+ggplot(top_upt,
+       aes(x = reorder(
+         paste0(stringr::str_trunc(AGENCY, 25), " (", mode, ")"),
+         total_upt
+       ),
+       y = total_upt,
+       fill = mode)) +
+  geom_col() +
+  geom_text(
+    aes(label = scales::label_number(scale = 1e-9, suffix = "B")(total_upt)),
+    vjust = -0.4
+  ) +
+  labs(
+    title = "Five Transit Services with the Highest Annual Passenger Trips",
+    x = "Transit Agency and Mode",
+    y = "Annual Unlinked Passenger Trips (Billions)",
+    fill = "Transit Mode"
+  ) +
+  scale_y_continuous(
+    labels = scales::label_number(scale = 1e-9, suffix = "B"),
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  )
+```
+*Source: National Transit Database (NTD), Transit Agency Data.*
+
+**Answer**: MTA New York City Transit's heavy rail service had the highest number of annual passenger trips, followed by its bus service. Los Angeles County, Chicago, and Washington also ranked among the top five transit services. This shows that larger transit agencies and major rail and bus systems account for a significant amount of public transportation ridership.
+
+## Question 2: Average trip length for MTA NYC Transit
+
+```{r}
+#| code-fold: true
+#| code-summary: "NTD Service Q2: What is the average trip length for MTA New York City Transit?"
+#| message: false
+#| warning: false
+
+# Calculates the average passenger trip length for MTA New York City Transit.
+mta_trip_length <- NTD_SERVICE |>
+  filter(AGENCY == "MTA New York City Transit") |>
+  summarize(
+    total_passenger_miles = sum(sum_passenger_miles, na.rm = TRUE),
+    total_upt = sum(total_upt, na.rm = TRUE),
+    average_trip_length = total_passenger_miles / total_upt
+  )
+
+mta_trip_length
+
+```
+**Answer**: The average passenger trip length for MTA New York City Transit was approximately 3.18 miles per trip. This means that passengers travel an average of about 3.18 miles each time they use the system. This measurement helps show how far the agency transports its passengers and will be useful when comparing emissions per passenger mile across transit agencies.
+
+:::
+
+## Data Analysis ##
+### Task 5: Calculate Total Emissions 
+::: {.panel-tabset}
+
+#### Data Cleaning and Joining 
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show Data Integration Code"
+
+# Prepare agency, mode, and state information
+service_state <- NTD_SERVICE |>
+  distinct(NTD_ID, mode, state)
+
+# Clean energy data and make agency IDs and modes consistent
+energy_for_join <- NTD_ENERGY |>
+  mutate(
+    NTD_ID = sprintf("%05d", as.integer(`NTD ID`)),
+    Mode = recode(
+      Mode,
+      "DR" = "Demand Response",
+      "FB" = "Ferryboat",
+      "MB" = "Bus",
+      "SR" = "Streetcar Rail",
+      "TB" = "Trolleybus",
+      "VP" = "Vanpool",
+      "AR" = "Alaska Railroad",
+      "CB" = "Commuter Bus",
+      "CC" = "Cable Car",
+      "CR" = "Commuter Rail",
+      "HR" = "Heavy Rail",
+      "IP" = "Inclined Plane",
+      "LR" = "Light Rail",
+      "MG" = "Monorail/Automated Guideway",
+      "RB" = "Bus Rapid Transit",
+      "TR" = "Aerial Tramway",
+      "YR" = "Hybrid Rail"
+    )
+  )
+
+# Check that each agency and mode has only one state
+state_conflicts <- service_state |>
+  count(NTD_ID, mode) |>
+  filter(n > 1)
+
+if (nrow(state_conflicts) > 0) {
+  stop("Some Agency + Mode pairs have multiple states.")
+}
+
+# Combine the three datasets
+transit_joined <- energy_for_join |>
+  left_join(
+    service_state,
+    by = c("NTD_ID", "Mode" = "mode"),
+    relationship = "many-to-one"
+  ) |>
+  left_join(
+    EIA_SEP_REPORT |>
+      select(abbreviation, CO2_MWh),
+    by = c("state" = "abbreviation"),
+    relationship = "many-to-one"
+  )
+
+# Fill in missing electricity emissions factors
+transit_joined <- transit_joined |>
+  mutate(
+    electricity_factor_source = case_when(
+      !is.na(CO2_MWh) ~ "EIA 2024",
+      state == "DC" ~ "EPA eGRID 2023 - RFCE",
+      state == "PR" ~ "EPA eGRID 2023 - PRMS",
+      TRUE ~ "Unknown"
+    ),
+    CO2_MWh = case_when(
+      !is.na(CO2_MWh) ~ CO2_MWh,
+      state == "DC" ~ 596.904,
+      state == "PR" ~ 1543.073,
+      TRUE ~ NA_real_
+    )
+  )
+
+# Review the combined data
+join_check <- transit_joined |>
+  summarize(
+    rows = n(),
+    missing_state = sum(is.na(state)),
+    missing_co2_factor = sum(is.na(CO2_MWh))
+  )
+
+join_check
+
+```
+I combined the NTD and EIA datasets to connect each transit agency with its fuel consumption, electricity usage, and state emissions factors. I standardized agency IDs and transportation mode names so the datasets could be joined correctly. I also checked for missing information and filled in the missing electricity emissions factors for Washington, DC, and Puerto Rico using EPA eGRID data.
+
+#### Caclulating Emission 
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show Code"
+# Calculate emissions from fuel and electricity
+transit_joined <- transit_joined |>
+  mutate(
+    # Multiply each fuel amount by its CO2 conversion factor
+    fuel_emissions_lb =
+      `Gallons of Diesel Fuel` * 22.45 +
+      `Gallons of Gasoline` * 19.36 +
+      `Gallons of Kerosene` * 21.50 +
+      `Gallons of Liquified Petroleum Gas` * 12.52 +
+      `Gallons of Bunker Fuel` * 24.85 +
+      `Gallons of Compressed Natural Gas` * 14.83 +
+      `Gallons of Liquified Nat Gas` * 9.92 +
+      `Gallons of Bio-Diesel` * 20.83 +
+      `Gallons of Ethanol` * 12.59 +
+      `Kilograms of Hydrogen` * 0,
+# Convert electricity usage from kWh to MWh and calculate emissions
+    electricity_emissions_lb =
+      (`Kilowatt hours of Electric Battery` +
+       `Kilowatt hours of Electric Propulsion`) / 1000 * CO2_MWh,
+  # Add fuel and electricity emissions together
+    total_emissions_lb =
+      fuel_emissions_lb + electricity_emissions_lb,
+ # Convert total emissions from pounds to metric tons
+    total_emissions_metric_tons =
+      total_emissions_lb / 2204.62262
+  )
+```
+I used mutate() to calculate emissions from each fuel source by multiplying fuel consumption by its corresponding CO₂ conversion factor. I also calculated electricity emissions using each state's emissions factor. Finally, I combined fuel and electricity emissions and converted the total from pounds into metric tons.
+
+#### Fuel Emission by Transit Agency
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show Code"
+
+# Select the ten agency and mode combinations with the highest total emissions
+top_10_emissions <- transit_joined |>
+  arrange(desc(total_emissions_metric_tons)) |>
+  slice_head(n = 10) |>
+  mutate(
+    # Combine agency and mode names for chart labels
+    agency_mode = paste(`Agency Name`, Mode, sep = " - ")
+  )
+# Create a horizontal bar chart of fuel emissions
+ggplot(top_10_emissions,
+       aes(x = reorder(agency_mode, fuel_emissions_lb),
+           y = fuel_emissions_lb)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  # Display emissions in millions of pounds
+  scale_y_continuous(labels = scales::label_number(scale = 1e-6,
+                                                   suffix = "M")) +
+  labs(
+    title = "Fuel Emissions by Transit Agency",
+    x = NULL,
+    y = "Emissions (Million Pounds of CO2)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8),
+    plot.title = element_text(size = 12)
+  )
+```
+I created a bar chart showing fuel emissions for the ten agency and mode combinations with the highest total emissions. This helps identify which transit operations produce the most emissions from fuel consumption.
+
+#### Electricty Emissions by Transit Agency
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show Code"
+
+# Create a horizontal bar chart of electricity emissions
+ggplot(top_10_emissions,
+       aes(x = reorder(agency_mode, electricity_emissions_lb),
+           y = electricity_emissions_lb)) +
+  geom_col(fill = "darkorange") +
+  coord_flip() +
+   # Display emissions in millions of pounds
+  scale_y_continuous(labels = scales::label_number(scale = 1e-6,
+                                                   suffix = "M")) +
+  labs(
+    title = "Electricity Emissions by Transit Agency",
+    x = NULL,
+    y = "Emissions (Million Pounds of CO2)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8),
+    plot.title = element_text(size = 12)
+  )
+```
+I created a second bar chart showing electricity emissions for the same ten agency and mode combinations. This makes it easier to compare electricity-related emissions with fuel emissions and understand how different transit agencies use energy.
+:::
+
+```{r}
+#| echo: false
+#| include: false
+# Add emissions from all agency and mode combinations
+total_co2 <- sum(transit_joined$total_emissions_metric_tons)
+```
+Total CO2 Emissions
+**`r format(round(total_co2), big.mark = ",")`**
+
+**Metric Tons of CO2**
+Across 1,134 transit Agency + Mode combinations.
+
+#### Methodology
+
+To calculate total CO₂ emissions, I combined data from the National Transit Database (NTD) and the Energy Information Administration (EIA). I joined the datasets using agency identification numbers and transportation modes to connect each transit agency with its state, fuel consumption, and electricity usage. I also converted abbreviated transportation modes into their full names to make the datasets consistent. For electricity emissions, I used each state's estimated CO₂ emissions per megawatt-hour. Eleven records initially had missing electricity emissions factors, so I used EPA eGRID 2023 factors for Washington, DC and Puerto Rico. I then used `mutate()` in R to calculate emissions from each fuel source and electricity consumption. Finally, I added fuel and electricity emissions together to calculate total emissions for each Agency + Mode combination and converted the results from pounds to metric tons.
+
+#### Findings
+
+The analysis included 1,134 unique Agency + Mode combinations and estimated approximately 8,800,638 metric tons of total CO₂ emissions. The average emissions per combination were 7,760.70 metric tons, while the median was 1,462 metric tons. This difference suggests that some transit agencies produce considerably more emissions than others. The highest-emitting combination was MTA New York City Transit Heavy Rail, with most of its emissions coming from electricity. The fuel emissions graph also showed that bus agencies, including MTA New York City Transit and New Jersey Transit, had particularly high fuel emissions. Overall, the results show that both fuel and electricity contribute to public transportation emissions, but their impact varies depending on the agency and transportation mode.
+
+### Task 6: Normalize Emissions to Transit Usage
+
+```{r}
+#| echo: true
+#| results: hide
+#| code-fold: true
+#| code-summary: "Show Agency-Level Data Code"
+
+# Add emissions across all transportation modes for each agency
+agency_emissions <- transit_joined |>
+  group_by(NTD_ID) |>
+  summarize(
+    agency = first(`Agency Name`),
+    state = first(state),
+    total_emissions_lb = sum(total_emissions_lb, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Add passenger trips and passenger miles across all modes
+agency_usage <- NTD_SERVICE |>
+  group_by(NTD_ID) |>
+  summarize(
+    total_upt = sum(total_upt, na.rm = TRUE),
+    total_passenger_miles = sum(sum_passenger_miles, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Combine agency emissions with passenger service information
+agency_metrics <- agency_emissions |>
+  left_join(agency_usage, by = "NTD_ID")
+
+# Review the combined agency-level data
+agency_metrics
+
+# Calculate emissions per passenger trip and passenger mile
+agency_metrics <- agency_metrics |>
+  mutate(
+    # Calculate pounds of CO2 produced per passenger trip
+    emissions_per_upt = total_emissions_lb / total_upt,
+
+    # Calculate pounds of CO2 produced per passenger mile
+    emissions_per_passenger_mile =
+      total_emissions_lb / total_passenger_miles
+  )
+
+# Display the agencies with the lowest emissions per passenger trip
+agency_metrics |>
+  arrange(emissions_per_upt) |>
+  select(agency, state, total_upt, emissions_per_upt) |>
+  print(n = 10)
+
+# Keep agencies with valid passenger usage
+agency_metrics_valid <- agency_metrics |>
+  filter(
+    total_upt > 0,
+    total_passenger_miles > 0
+  )
+
+# Display the ten agencies with the lowest emissions per passenger mile
+agency_metrics_valid |>
+  arrange(emissions_per_passenger_mile) |>
+  select(
+    agency,
+    state,
+    total_passenger_miles,
+    emissions_per_passenger_mile
+  ) |>
+  print(n = 10)
+
+agency_metrics_large_enough <- agency_metrics_valid |>
+  filter(total_upt >= 1000000)
+
+# Find the ten most efficient agencies per passenger trip
+agency_metrics_large_enough |>
+  arrange(emissions_per_upt) |>
+  select(agency, state, total_upt, emissions_per_upt) |>
+  print(n = 10)
+
+# Find the ten most efficient agencies per passenger mile
+agency_metrics_large_enough |>
+  arrange(emissions_per_passenger_mile) |>
+  select(
+    agency,
+    state,
+    total_passenger_miles,
+    emissions_per_passenger_mile
+  ) |>
+  print(n = 10)
+
+# Divide agencies into three groups based on passenger trips
+agency_metrics_large_enough <- agency_metrics_large_enough |>
+  mutate(
+    agency_size = ntile(total_upt, 3),
+    agency_size = recode(
+      as.character(agency_size),
+      "1" = "Small",
+      "2" = "Medium",
+      "3" = "Large"
+    )
+  )
+
+# Check how many agencies are in each size category
+agency_metrics_large_enough |>
+  count(agency_size)
+
+# Find the most efficient agency in each size category
+greenest_by_upt <- agency_metrics_large_enough |>
+  group_by(agency_size) |>
+  slice_min(emissions_per_upt, n = 1, with_ties = FALSE) |>
+  ungroup()
+
+greenest_by_miles <- agency_metrics_large_enough |>
+  group_by(agency_size) |>
+  slice_min(emissions_per_passenger_mile, n = 1, with_ties = FALSE) |>
+  ungroup()
+
+# Display winners based on passenger trips
+greenest_by_upt |>
+  select(agency_size, agency, state, emissions_per_upt)
+
+# Display winners based on passenger miles
+greenest_by_miles |>
+  select(agency_size, agency, state, emissions_per_passenger_mile)
+```
+
+##### In this section, I combined each transit agency's total emissions with its passenger trips and passenger miles to calculate emissions per passenger trip and passenger mile. I then filtered out agencies with no passenger usage and agencies with fewer than one million passenger trips to avoid including very small agencies in the comparison. Next, I divided the remaining agencies into small, medium, and large groups based on passenger trips. Finally, I identified the most efficient agency in each group using both measurements. This allowed me to compare agencies more fairly based on their size and passenger service.
+
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show CO2 per UPT Ranking Code"
+
+# Find the five agencies with the lowest emissions per UPT
+top_5_upt <- agency_metrics_large_enough |>
+  arrange(emissions_per_upt) |>
+  slice_head(n = 5)
+
+# Create the formatted table
+top_5_upt |>
+  select(
+    `Transit Agency` = agency,
+    `Annual UPT` = total_upt,
+    `lbs CO2 / UPT` = emissions_per_upt
+  ) |>
+  gt::gt() |>
+  gt::tab_header(
+    title = "Most Efficient Transit Agencies",
+    subtitle = "Lowest CO2 Emissions per UPT, 2025"
+  ) |>
+  gt::fmt_number(
+    columns = `Annual UPT`,
+    decimals = 0
+  ) |>
+  gt::fmt_number(
+    columns = `lbs CO2 / UPT`,
+    decimals = 4
+  ) |>
+  gt::tab_source_note(
+    source_note = "Sources: NTD, EIA, and EPA. Agencies with at least 1 million UPT."
+  )|>
+  gt::tab_options(
+    heading.background.color = "#17365D",
+    row.striping.background_color = "#DCEEFF"
+  ) |>
+  gt::tab_style(
+    style = gt::cell_fill(color = "#BBD7F0"),
+    locations = gt::cells_column_labels()
+  )
+
+```
+
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show CO2 per Passenger Mile Ranking Code"
+
+# Find the five agencies with the lowest emissions per passenger mile
+top_5_miles <- agency_metrics_large_enough |>
+  arrange(emissions_per_passenger_mile) |>
+  slice_head(n = 5)
+
+# Create the formatted table
+top_5_miles |>
+  select(
+    `Transit Agency` = agency,
+    `Passenger Miles` = total_passenger_miles,
+    `lbs CO2 / Passenger Mile` = emissions_per_passenger_mile
+  ) |>
+  gt::gt() |>
+  gt::tab_header(
+    title = "Most Efficient Transit Agencies",
+    subtitle = "Lowest CO2 Emissions per Passenger Mile, 2025"
+  ) |>
+  gt::fmt_number(
+    columns = `Passenger Miles`,
+    decimals = 0
+  ) |>
+  gt::fmt_number(
+    columns = `lbs CO2 / Passenger Mile`,
+    decimals = 4
+  ) |>
+  gt::tab_source_note(
+    source_note = "Sources: NTD, EIA, and EPA. Agencies with at least 1 million UPT."
+  )|>
+  gt::tab_options(
+    heading.background.color = "#17365D",
+    row.striping.background_color = "#DCEEFF"
+  ) |>
+  gt::tab_style(
+    style = gt::cell_fill(color = "#BBD7F0"),
+    locations = gt::cells_column_labels()
+  )
+```
+
+### Task 7: Determine Award Winners
+
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "Calculate GTA Award Winners"
+
+# Find the agency with the highest emissions per passenger mile
+not_so_green <- agency_metrics_large_enough |>
+  slice_max(
+    emissions_per_passenger_mile,
+    n = 1,
+    with_ties = FALSE
+  )
+
+# Calculate the median emissions per passenger mile
+median_emissions <- median(
+  agency_metrics_large_enough$emissions_per_passenger_mile,
+  na.rm = TRUE
+)
+```
+
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "GTA Award Winners"
+
+GTA_award_winners <- tibble::tibble(
+  Award = c("Greenest Transit Agency", "Not-So-Green Award"),
+  Winner = c(
+    "City of Seattle",
+    not_so_green$agency[1]
+  ),
+  State = c(
+    "WA",
+    not_so_green$state[1]
+  ),
+  `CO2 per Passenger Mile (lb)` = c(
+    0.0639,
+    not_so_green$emissions_per_passenger_mile[1]
+  )
+)
+
+GTA_award_winners |>
+  gt::gt() |>
+  gt::tab_header(
+    title = "🏆 GTA Award Winners 🏆",
+    subtitle = "CO2 emissions per passenger mile"
+  ) |>
+  gt::fmt_number(
+    columns = `CO2 per Passenger Mile (lb)`,
+    decimals = 4
+  ) |>
+  gt::tab_source_note(
+    source_note = "Sources: NTD, EIA, and EPA."
+  )|>
+  gt::tab_options(
+    heading.background.color = "#246B45",
+    row.striping.background_color = "#E2F0E8"
+  ) |>
+  gt::tab_style(
+    style = gt::cell_fill(color = "#C5E1D0"),
+    locations = gt::cells_column_labels()
+  )
+```
+
+```{r}
+#| echo: true
+#| results: hide
+#| code-fold: true
+#| code-summary: "Calculate the median"
+# Calculate the median CO2 emissions per passenger mile
+median_emissions <- median(
+  agency_metrics_large_enough$emissions_per_passenger_mile,
+  na.rm = TRUE
+)
+
+# Display the median
+median_emissions
+
+# Display the Not-So-Green Award winner
+not_so_green <- agency_metrics_large_enough |>
+  slice_max(
+    emissions_per_passenger_mile,
+    n = 1,
+    with_ties = FALSE
+  )
+
+not_so_green |>
+  select(agency, state, emissions_per_passenger_mile)
+```
+
+```{r}
+#| echo: true
+#| results: hide
+#| code-fold: true
+#| code-summary: "Calculate the highest CO2 emission"
+# Find the agency with the highest CO2 emissions per passenger mile
+not_so_green <- agency_metrics_large_enough |>
+  slice_max(
+    emissions_per_passenger_mile,
+    n = 1,
+    with_ties = FALSE
+  )
+
+# Display the winning agency and its emissions
+not_so_green |>
+  select(agency, state, emissions_per_passenger_mile)
+```
+
+
+## Press Release ##
+
+### **GTA Announces Its Green Transit Award Winners: Some Agencies Are Greener Than Others!** ###
+
+After comparing public transit agencies across the country, the results are in! Some agencies produced much less CO2 for the amount of passenger service they provided, while others produced considerably more. Here are the winners of this year's GTA Transit Awards!
+
+**How Were the Winners Chosen?**
+
+We compared agencies using their CO2 emissions per passenger mile. This was calculated by dividing each agency's total CO2 emissions by its total passenger miles. This helps show how much pollution an agency produces based on the amount of passenger service it provides.
+
+To keep the comparison fair, we only included agencies with at least 1 million unlinked passenger trips. The median agency produced 0.9538 pounds of CO2 per passenger mile. We used this as a reference point to compare the winners with a typical transit agency.
+
+**Greenest Transit Agency Award**
+
+Winner: **City of Seattle, Washington🏆**
+
+The City of Seattle won the Greenest Transit Agency Award with only 0.0639 pounds of CO2 per passenger mile. This is about 93.3% lower than the median of 0.9538 pounds. This shows that Seattle produced much less CO2 for the amount of passenger service it provided compared with a typical agency in our analysis. Looks like Seattle is doing something right!
+
+**Not-So-Green Award**
+
+Winner: **City of Glendale, California 🏆**
+
+The Not-So-Green Award goes to the City of Glendale, which had the highest emissions per passenger mile among the agencies included in our analysis. Its emissions were 3.23 pounds of CO2 per passenger mile, compared with the median of 0.9538 pounds. This is about 3.4 times higher than the median agency. Since it had the highest emissions in our group, it earned the Not-So-Green Award. Hopefully, next year brings some improvements!
+
+Figure 1: Greenest Transit Award Graph
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "Greenest Transit Award Graph"
+# Find the five agencies with the lowest emissions per passenger mile
+greenest_top5 <- agency_metrics_large_enough |>
+  arrange(emissions_per_passenger_mile) |>
+  slice_head(n = 5) |>
+  mutate(
+    Award_Winner = agency == "City of Seattle"
+  )
+
+# Create the chart
+ggplot(
+  greenest_top5,
+  aes(
+    x = reorder(agency, emissions_per_passenger_mile),
+    y = emissions_per_passenger_mile,
+    fill = Award_Winner
+  )
+) +
+  geom_col() +
+  geom_hline(
+    yintercept = median_emissions,
+    linetype = "dashed",
+    color = "red"
+  ) +
+  scale_fill_manual(
+    values = c("FALSE" = "gray70", "TRUE" = "darkseagreen4"),
+    guide = "none"
+  ) +
+  coord_flip() +
+  labs(
+    title = "Greenest Transit Agency Award",
+    subtitle = "City of Seattle compared with the five lowest-emission agencies",
+    x = "Transit Agency",
+    y = "CO2 Emissions (lb per Passenger Mile)",
+    caption = paste(
+      "Green bar = City of Seattle. Dashed line = median agency:",
+      round(median_emissions, 4),
+      "lb per passenger mile. Sources: NTD, EIA, and EPA."
+    )
+  ) +
+  theme_minimal()
+```
+
+Figure 2: Not so Green Award Graph
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "Not so Green Award Graph"
+# Find the five agencies with the highest emissions per passenger mile
+not_so_green_top5 <- agency_metrics_large_enough |>
+  arrange(desc(emissions_per_passenger_mile)) |>
+  slice_head(n = 5) |>
+  mutate(
+    Award_Winner = agency == not_so_green$agency[1]
+  )
+
+# Create the chart
+ggplot(
+  not_so_green_top5,
+  aes(
+    x = reorder(agency, emissions_per_passenger_mile),
+    y = emissions_per_passenger_mile,
+    fill = Award_Winner
+  )
+) +
+  geom_col() +
+  geom_hline(
+    yintercept = median_emissions,
+    linetype = "dashed",
+    color = "blue"
+  ) +
+  scale_fill_manual(
+    values = c("FALSE" = "gray70", "TRUE" = "firebrick"),
+    guide = "none"
+  ) +
+  coord_flip() +
+  labs(
+    title = "Not-So-Green Award",
+    subtitle = "Five agencies with the highest CO2 emissions per passenger mile",
+    x = "Transit Agency",
+    y = "CO2 Emissions (lb per Passenger Mile)",
+    caption = paste(
+      "Red bar = award winner. Dashed line = median agency:",
+      round(median_emissions, 4),
+      "lb per passenger mile. Sources: NTD, EIA, and EPA."
+    )
+  ) +
+  theme_minimal()
+```
+Data Sources
+National Transit Database: https://www.transit.dot.gov/ntd
+Energy Information Administration: https://www.eia.gov/electricity/
+Environmental Protection Agency: https://www.epa.gov/climateleadership/ghg-emission-factors-hub
+
+::: {.callout-note title="AI Usage Statement" collapse="true"}
+
+ChatGPT was used to help write the code in this project, but all non-code text was generated without the use of any Generative AI tools. Additionally, ChatGPT was used to provide additional background information on the topic and to brainstorm ideas for the final open-ended prompt.
+
+:::
