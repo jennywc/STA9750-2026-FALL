@@ -797,11 +797,11 @@ Total CO2 Emissions
 **Metric Tons of CO2**
 Across 1,134 transit Agency + Mode combinations.
 
-#### Methodology
+#### **Methodology**  
 
 To calculate total CO₂ emissions, I combined data from the National Transit Database (NTD) and the Energy Information Administration (EIA). I joined the datasets using agency identification numbers and transportation modes to connect each transit agency with its state, fuel consumption, and electricity usage. I also converted abbreviated transportation modes into their full names to make the datasets consistent. For electricity emissions, I used each state's estimated CO₂ emissions per megawatt-hour. Eleven records initially had missing electricity emissions factors, so I used EPA eGRID 2023 factors for Washington, DC and Puerto Rico. I then used `mutate()` in R to calculate emissions from each fuel source and electricity consumption. Finally, I added fuel and electricity emissions together to calculate total emissions for each Agency + Mode combination and converted the results from pounds to metric tons.
 
-#### Findings
+#### **Findings**
 
 The analysis included 1,134 unique Agency + Mode combinations and estimated approximately 8,800,638 metric tons of total CO₂ emissions. The average emissions per combination were 7,760.70 metric tons, while the median was 1,462 metric tons. This difference suggests that some transit agencies produce considerably more emissions than others. The highest-emitting combination was MTA New York City Transit Heavy Rail, with most of its emissions coming from electricity. The fuel emissions graph also showed that bus agencies, including MTA New York City Transit and New Jersey Transit, had particularly high fuel emissions. Overall, the results show that both fuel and electricity contribute to public transportation emissions, but their impact varies depending on the agency and transportation mode.
 
@@ -1154,7 +1154,7 @@ Winner: **City of Glendale, California 🏆**
 
 The Not-So-Green Award goes to the City of Glendale, which had the highest emissions per passenger mile among the agencies included in our analysis. Its emissions were 3.23 pounds of CO2 per passenger mile, compared with the median of 0.9538 pounds. This is about 3.4 times higher than the median agency. Since it had the highest emissions in our group, it earned the Not-So-Green Award. Hopefully, next year brings some improvements!
 
-Figure 1: Greenest Transit Award Graph
+*Figure 1: Greenest Transit Award Graph*
 ```{r}
 #| echo: true
 #| code-fold: true
@@ -1201,7 +1201,7 @@ ggplot(
   theme_minimal()
 ```
 
-Figure 2: Not so Green Award Graph
+*Figure 2: Not so Green Award Graph*
 ```{r}
 #| echo: true
 #| code-fold: true
@@ -1249,7 +1249,9 @@ ggplot(
 ```
 Data Sources
 National Transit Database: https://www.transit.dot.gov/ntd
+
 Energy Information Administration: https://www.eia.gov/electricity/
+
 Environmental Protection Agency: https://www.epa.gov/climateleadership/ghg-emission-factors-hub
 
 ::: {.callout-note title="AI Usage Statement" collapse="true"}
