@@ -1,5 +1,5 @@
 ---
-title: "Mini-Project 02: Green Transit Awards"
+title: "Mini-Project 02: Green Transit Alliance Awards"
 format:
   html:
     toc: true
@@ -231,7 +231,7 @@ EIA_SEP_REPORT |>
   slice_head(n = 10) |>
   mutate(electricity_price_MWh = sprintf("$%.2f", electricity_price_MWh)) |>
   knitr::kable(
-    caption = "State Electricity Profiles (First 10 Rows"
+    caption = "State Electricity Profiles (First 10 Rows)"
   )
 ```
 
@@ -338,7 +338,7 @@ ggplot(most_expensive,
 ```
 *Source: U.S. Energy Information Administration (EIA), State Electricity Profiles.*
 
-**Answer**: Hawaii had the highest electricity price at $380.00 per MWh, followed by California at $270.40 per MWh. Connecticut, Rhode Island, and Massachusetts also had some of the highest electricity prices. This shows that electricity costs vary significantly across states, which may affect the operating costs of public transit agencies that rely on electricity.
+**Answer**: `r most_expensive$state[1]` had the highest electricity price at $`r sprintf("%.2f", most_expensive$electricity_price_MWh[1])`per MWh, followed by California at $270.40 per MWh. Connecticut, Rhode Island, and Massachusetts also had some of the highest electricity prices. This shows that electricity costs vary significantly across states, which may affect the operating costs of public transit agencies that rely on electricity.
 
 ## Question 2: Dirtiest Electricity Mix
 
@@ -684,9 +684,9 @@ join_check <- transit_joined |>
 join_check
 
 ```
-I combined the NTD and EIA datasets to connect each transit agency with its fuel consumption, electricity usage, and state emissions factors. I standardized agency IDs and transportation mode names so the datasets could be joined correctly. I also checked for missing information and filled in the missing electricity emissions factors for Washington, DC, and Puerto Rico using EPA eGRID data.
+I combined the NTD and EIA data sets to connect each transit agency with its fuel consumption, electricity usage, and state emissions factors. I standardized agency IDs and transportation mode names so the data sets could be joined correctly. I also checked for missing information and filled in the missing electricity emissions factors for Washington, DC, and Puerto Rico using EPA eGRID data.
 
-#### Caclulating Emission 
+#### Calculating Emission 
 ```{r}
 #| echo: true
 #| code-fold: true
@@ -807,6 +807,7 @@ The analysis included 1,134 unique Agency + Mode combinations and estimated appr
 
 ### Task 6: Normalize Emissions to Transit Usage
 
+::: {.panel-tabset}
 ```{r}
 #| echo: true
 #| results: hide
@@ -1018,15 +1019,22 @@ top_5_miles |>
     locations = gt::cells_column_labels()
   )
 ```
-
+:::
 ### Task 7: Determine Award Winners
-
 ```{r}
 #| echo: true
 #| code-fold: true
-#| code-summary: "Calculate GTA Award Winners"
+#| code-summary: "Calculate Greenest and Not-So-Green Award Winners"
 
-# Find the agency with the highest emissions per passenger mile
+# Greenest Transit Award: lowest emissions per passenger mile
+greenest <- agency_metrics_large_enough |>
+  slice_min(
+    emissions_per_passenger_mile,
+    n = 1,
+    with_ties = FALSE
+  )
+
+# Not-So-Green Award: highest emissions per passenger mile
 not_so_green <- agency_metrics_large_enough |>
   slice_max(
     emissions_per_passenger_mile,
@@ -1040,6 +1048,13 @@ median_emissions <- median(
   na.rm = TRUE
 )
 ```
+**Greenest Transit Award**
+
+Metric: CO2 emissions per passenger mile, calculated by dividing an agency's total CO2 emissions by its total passenger miles. The agency with the lowest emissions per passenger mile wins this award because it produces the least CO2 relative to the passenger service it provides.
+
+**Not-So-Green Award**
+
+Metric: CO2 emissions per passenger mile, calculated by dividing an agency's total CO2 emissions by its total passenger miles. The agency with the highest emissions per passenger mile wins this award because it produces the most CO2 relative to the passenger service it provides.
 
 ```{r}
 #| echo: true
@@ -1049,15 +1064,15 @@ median_emissions <- median(
 GTA_award_winners <- tibble::tibble(
   Award = c("Greenest Transit Agency", "Not-So-Green Award"),
   Winner = c(
-    "City of Seattle",
+    greenest$agency[1],
     not_so_green$agency[1]
   ),
   State = c(
-    "WA",
+    greenest$state[1],
     not_so_green$state[1]
   ),
   `CO2 per Passenger Mile (lb)` = c(
-    0.0639,
+    greenest$emissions_per_passenger_mile[1],
     not_so_green$emissions_per_passenger_mile[1]
   )
 )
@@ -1074,7 +1089,7 @@ GTA_award_winners |>
   ) |>
   gt::tab_source_note(
     source_note = "Sources: NTD, EIA, and EPA."
-  )|>
+  ) |>
   gt::tab_options(
     heading.background.color = "#246B45",
     row.striping.background_color = "#E2F0E8"
@@ -1087,48 +1102,11 @@ GTA_award_winners |>
 
 ```{r}
 #| echo: true
-#| results: hide
 #| code-fold: true
-#| code-summary: "Calculate the median"
-# Calculate the median CO2 emissions per passenger mile
-median_emissions <- median(
-  agency_metrics_large_enough$emissions_per_passenger_mile,
-  na.rm = TRUE
-)
+#| code-summary: "Median CO2 Emissions per Passenger Mile"
 
-# Display the median
 median_emissions
-
-# Display the Not-So-Green Award winner
-not_so_green <- agency_metrics_large_enough |>
-  slice_max(
-    emissions_per_passenger_mile,
-    n = 1,
-    with_ties = FALSE
-  )
-
-not_so_green |>
-  select(agency, state, emissions_per_passenger_mile)
 ```
-
-```{r}
-#| echo: true
-#| results: hide
-#| code-fold: true
-#| code-summary: "Calculate the highest CO2 emission"
-# Find the agency with the highest CO2 emissions per passenger mile
-not_so_green <- agency_metrics_large_enough |>
-  slice_max(
-    emissions_per_passenger_mile,
-    n = 1,
-    with_ties = FALSE
-  )
-
-# Display the winning agency and its emissions
-not_so_green |>
-  select(agency, state, emissions_per_passenger_mile)
-```
-
 
 ## Press Release ##
 
@@ -1159,6 +1137,7 @@ The Not-So-Green Award goes to the City of Glendale, which had the highest emiss
 #| echo: true
 #| code-fold: true
 #| code-summary: "Greenest Transit Award Graph"
+
 # Find the five agencies with the lowest emissions per passenger mile
 greenest_top5 <- agency_metrics_large_enough |>
   arrange(emissions_per_passenger_mile) |>
@@ -1187,6 +1166,9 @@ ggplot(
     guide = "none"
   ) +
   coord_flip() +
+  scale_x_discrete(
+    labels = \(x) stringr::str_wrap(x, width = 25)
+  ) +
   labs(
     title = "Greenest Transit Agency Award",
     subtitle = "City of Seattle compared with the five lowest-emission agencies",
@@ -1198,7 +1180,10 @@ ggplot(
       "lb per passenger mile. Sources: NTD, EIA, and EPA."
     )
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
 ```
 
 *Figure 2: Not so Green Award Graph*
